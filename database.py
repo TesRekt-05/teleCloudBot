@@ -5,23 +5,41 @@ import os
 
 class Database:
     def __init__(self, connection_string=None):
-        # Get MongoDB URL from environment
+        # Store connection string but DON'T connect yet
         self.connection_string = connection_string or os.environ.get('MONGODB_URI')
-        self.client = MongoClient(self.connection_string)
-        self.db = self.client['telegram_cloud']
-        
-        # Collections
-        self.users = self.db['users']
-        self.folders = self.db['folders']
-        self.files = self.db['files']
-        
-        # Create indexes
-        self.create_indexes()
+        self._client = None
+        self._db = None
     
-    def create_indexes(self):
-        """Create indexes for better performance"""
-        self.folders.create_index('user_id')
-        self.files.create_index('folder_id')
+    @property
+    def client(self):
+        """Lazy connection - only connect when actually needed"""
+        if self._client is None:
+            self._client = MongoClient(
+                self.connection_string,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+                socketTimeoutMS=5000,
+                tlsAllowInvalidCertificates=True  # Workaround for SSL issue
+            )
+        return self._client
+    
+    @property
+    def db(self):
+        if self._db is None:
+            self._db = self.client['telegram_cloud']
+        return self._db
+    
+    @property
+    def users(self):
+        return self.db['users']
+    
+    @property
+    def folders(self):
+        return self.db['folders']
+    
+    @property
+    def files(self):
+        return self.db['files']
     
     def add_user(self, user_id, username, first_name):
         """Add or update user"""
@@ -37,7 +55,6 @@ class Database:
     
     def create_folder(self, user_id, folder_name):
         """Create a new folder"""
-        # Check if exists
         existing = self.folders.find_one({'user_id': user_id, 'folder_name': folder_name})
         if existing:
             return False
@@ -57,10 +74,10 @@ class Database:
         for folder in folders:
             file_count = self.files.count_documents({'folder_id': str(folder['_id'])})
             result.append((
-                str(folder['_id']),  # id
-                folder['folder_name'],  # name
-                folder['created_at'].isoformat(),  # created_at
-                file_count  # file_count
+                str(folder['_id']),
+                folder['folder_name'],
+                folder['created_at'].isoformat(),
+                file_count
             ))
         
         return result
@@ -83,12 +100,12 @@ class Database:
         result = []
         for file in files:
             result.append((
-                str(file['_id']),  # id
-                file['file_id'],  # telegram file_id
-                file['file_name'],  # name
-                file['file_type'],  # type
-                file['file_size'],  # size
-                file['uploaded_at'].isoformat()  # uploaded_at
+                str(file['_id']),
+                file['file_id'],
+                file['file_name'],
+                file['file_type'],
+                file['file_size'],
+                file['uploaded_at'].isoformat()
             ))
         
         return result
@@ -125,10 +142,7 @@ class Database:
         """Get user statistics"""
         total_folders = self.folders.count_documents({'user_id': user_id})
         
-        # Get all folder IDs for this user
         folder_ids = [str(f['_id']) for f in self.folders.find({'user_id': user_id})]
-        
-        # Count files and total size
         total_files = self.files.count_documents({'folder_id': {'$in': folder_ids}})
         
         pipeline = [
@@ -138,9 +152,9 @@ class Database:
         result = list(self.files.aggregate(pipeline))
         total_size = result[0]['total_size'] if result else 0
         
-        # Get top 3 folders
         top_folders = []
         for folder_id in folder_ids[:3]:
+            from bson import ObjectId
             folder = self.folders.find_one({'_id': ObjectId(folder_id)})
             if folder:
                 count = self.files.count_documents({'folder_id': folder_id})
