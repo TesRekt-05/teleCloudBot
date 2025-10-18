@@ -1,0 +1,44 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Database files (IMPORTANT!)
+*.db
+*.sqlite
+*.sqlite3
+telegram_cloud.db
+
+# Environment files (IMPORTANT!)
+.env
+.env.local
+.env.production
+
+# Sensitive config (IMPORTANT!)
+config.py
+
+# Frontend build (optional - can rebuild)
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
