@@ -3,16 +3,17 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from database import Database
 import os
+import requests
 
 # Get configuration from environment variables
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
-DATABASE_NAME = "telegram_cloud.db"
 
+# Initialize Flask app
 app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)
 
-# Initialize database
-db = Database(DATABASE_NAME)
+# Initialize database (will use DATABASE_URL from environment)
+db = Database()
 
 # Health check endpoint
 @app.route('/api/health', methods=['GET'])
@@ -26,7 +27,7 @@ def get_folders(user_id):
     folders_list = [{
         'id': folder[0],
         'name': folder[1],
-        'created_at': folder[2],
+        'created_at': str(folder[2]),  # Convert timestamp to string
         'file_count': folder[3]
     } for folder in folders]
     return jsonify({'success': True, 'folders': folders_list})
@@ -41,24 +42,23 @@ def get_files(folder_id):
         'name': file[2],
         'type': file[3],
         'size': file[4],
-        'uploaded_at': file[5]
+        'uploaded_at': str(file[5])  # Convert timestamp to string
     } for file in files]
     return jsonify({'success': True, 'files': files_list})
 
 # Get Telegram file URL
-@app.route('/api/file/<file_id>/url', methods=['GET'])
+@app.route('/api/file/<int:file_id>/url', methods=['GET'])
 def get_file_url(file_id):
     """Get direct URL to download file from Telegram"""
     try:
         # Get file info from database
-        file_info = db.get_file_info(int(file_id))
+        file_info = db.get_file_info(file_id)
         if not file_info:
             return jsonify({'success': False, 'message': 'File not found'}), 404
         
         telegram_file_id = file_info[1]
         
         # Get file from Telegram
-        import requests
         file_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={telegram_file_id}"
         response = requests.get(file_url)
         data = response.json()
@@ -95,7 +95,7 @@ def get_stats(user_id):
     stats = db.get_user_stats(user_id)
     return jsonify({'success': True, 'stats': stats})
 
-# Serve React app
+# Serve React app (optional - can remove if frontend is on Vercel)
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
@@ -117,5 +117,6 @@ if __name__ == '__main__':
     print("   - DELETE /api/folders/<folder_id>")
     print("   - GET  /api/stats/<user_id>")
     print(f"\n🌐 Server running on port {port}")
+    print(f"🗄️ Using PostgreSQL database")
     
     app.run(host='0.0.0.0', port=port, debug=False)

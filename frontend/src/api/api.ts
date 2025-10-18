@@ -1,7 +1,7 @@
 // frontend/src/api/api.ts
 import axios from 'axios';
 
-const API_BASE_URL = 'https://telegram-cloud-api.onrender.com/api';
+const API_BASE_URL = 'https://telecloudbot.onrender.com/api';
 
 // Export interface types
 export interface Folder {
