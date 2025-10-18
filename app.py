@@ -1,9 +1,12 @@
 # app.py
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from database import Database
-from config import DATABASE_NAME, BOT_TOKEN
 import os
+
+# Get configuration from environment variables
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+DATABASE_NAME = "telegram_cloud.db"
 
 app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)
@@ -42,7 +45,7 @@ def get_files(folder_id):
     } for file in files]
     return jsonify({'success': True, 'files': files_list})
 
-# NEW: Get Telegram file URL
+# Get Telegram file URL
 @app.route('/api/file/<file_id>/url', methods=['GET'])
 def get_file_url(file_id):
     """Get direct URL to download file from Telegram"""
@@ -52,12 +55,11 @@ def get_file_url(file_id):
         if not file_info:
             return jsonify({'success': False, 'message': 'File not found'}), 404
         
-        telegram_file_id = file_info[1]  # Get telegram_file_id from database
+        telegram_file_id = file_info[1]
         
-        # Construct Telegram Bot API file URL
-        file_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={telegram_file_id}"
-        
+        # Get file from Telegram
         import requests
+        file_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={telegram_file_id}"
         response = requests.get(file_url)
         data = response.json()
         
@@ -103,7 +105,6 @@ def serve(path):
         return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     
     print("🚀 Flask API Server Starting...")
@@ -111,7 +112,7 @@ if __name__ == '__main__':
     print("   - GET  /api/health")
     print("   - GET  /api/folders/<user_id>")
     print("   - GET  /api/folders/<folder_id>/files")
-    print("   - GET  /api/file/<file_id>/url")  # NEW!
+    print("   - GET  /api/file/<file_id>/url")
     print("   - DELETE /api/files/<file_id>")
     print("   - DELETE /api/folders/<folder_id>")
     print("   - GET  /api/stats/<user_id>")
