@@ -1,6 +1,7 @@
 # bot.py
-from database import Database
-from config import BOT_TOKEN, DATABASE_NAME
+import logging
+import asyncio
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -10,9 +11,12 @@ from telegram.ext import (
     filters,
     ConversationHandler
 )
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-import asyncio
-import logging
+from config import BOT_TOKEN, DATABASE_NAME
+from database import Database
+import os
+
+MONGODB_URI = "mongodb+srv://SAHIL5644:SAHIL5644@telegramcloud.pxssfrj.mongodb.net/?retryWrites=true&w=majority&appName=TelegramCloud"
+db = Database(MONGODB_URI)
 
 
 # Enable logging
@@ -21,8 +25,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Initialize database
-db = Database(DATABASE_NAME)
 
 # Conversation states
 WAITING_FOR_FOLDER_NAME = 1

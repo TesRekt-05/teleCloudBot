@@ -1,196 +1,152 @@
 # database.py
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from pymongo import MongoClient
 from datetime import datetime
 import os
 
 class Database:
-    def __init__(self, db_url=None):
-        # Use PostgreSQL URL from environment or parameter
-        self.db_url = db_url or os.environ.get('DATABASE_URL')
-        self.create_tables()
-    
-    def get_connection(self):
-        """Create a database connection"""
-        return psycopg2.connect(self.db_url)
-    
-    def create_tables(self):
-        """Create the necessary tables if they don't exist"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
+    def __init__(self, connection_string=None):
+        # Get MongoDB URL from environment
+        self.connection_string = connection_string or os.environ.get('MONGODB_URI')
+        self.client = MongoClient(self.connection_string)
+        self.db = self.client['telegram_cloud']
         
-        # Users table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                username TEXT,
-                first_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Folders table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS folders (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT REFERENCES users(user_id),
-                folder_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Files table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS files (
-                id SERIAL PRIMARY KEY,
-                folder_id INTEGER REFERENCES folders(id),
-                file_id TEXT,
-                file_name TEXT,
-                file_type TEXT,
-                file_size BIGINT,
-                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        # Collections
+        self.users = self.db['users']
+        self.folders = self.db['folders']
+        self.files = self.db['files']
         
         # Create indexes
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id)
-        ''')
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id)
-        ''')
-        
-        conn.commit()
-        conn.close()
+        self.create_indexes()
+    
+    def create_indexes(self):
+        """Create indexes for better performance"""
+        self.folders.create_index('user_id')
+        self.files.create_index('folder_id')
     
     def add_user(self, user_id, username, first_name):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO users (user_id, username, first_name)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (user_id) DO NOTHING
-        ''', (user_id, username, first_name))
-        conn.commit()
-        conn.close()
+        """Add or update user"""
+        self.users.update_one(
+            {'user_id': user_id},
+            {'$set': {
+                'username': username,
+                'first_name': first_name,
+                'created_at': datetime.now()
+            }},
+            upsert=True
+        )
     
     def create_folder(self, user_id, folder_name):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
+        """Create a new folder"""
         # Check if exists
-        cursor.execute('''
-            SELECT id FROM folders WHERE user_id = %s AND folder_name = %s
-        ''', (user_id, folder_name))
-        
-        if cursor.fetchone():
-            conn.close()
+        existing = self.folders.find_one({'user_id': user_id, 'folder_name': folder_name})
+        if existing:
             return False
         
-        cursor.execute('''
-            INSERT INTO folders (user_id, folder_name)
-            VALUES (%s, %s)
-        ''', (user_id, folder_name))
-        conn.commit()
-        conn.close()
+        self.folders.insert_one({
+            'user_id': user_id,
+            'folder_name': folder_name,
+            'created_at': datetime.now()
+        })
         return True
     
     def get_user_folders(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT f.id, f.folder_name, f.created_at, COUNT(fi.id) as file_count
-            FROM folders f
-            LEFT JOIN files fi ON f.id = fi.folder_id
-            WHERE f.user_id = %s
-            GROUP BY f.id
-            ORDER BY f.created_at DESC
-        ''', (user_id,))
-        folders = cursor.fetchall()
-        conn.close()
-        return folders
-    
-    def add_file(self, folder_id, file_id, file_name, file_type, file_size):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO files (folder_id, file_id, file_name, file_type, file_size)
-            VALUES (%s, %s, %s, %s, %s)
-        ''', (folder_id, file_id, file_name, file_type, file_size))
-        conn.commit()
-        conn.close()
-    
-    def get_folder_files(self, folder_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, file_id, file_name, file_type, file_size, uploaded_at
-            FROM files
-            WHERE folder_id = %s
-            ORDER BY uploaded_at DESC
-        ''', (folder_id,))
-        files = cursor.fetchall()
-        conn.close()
-        return files
-    
-    def delete_file(self, file_db_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM files WHERE id = %s', (file_db_id,))
-        conn.commit()
-        conn.close()
-    
-    def delete_folder(self, folder_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM files WHERE folder_id = %s', (folder_id,))
-        cursor.execute('DELETE FROM folders WHERE id = %s', (folder_id,))
-        conn.commit()
-        conn.close()
-    
-    def get_file_info(self, file_db_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, file_id, file_name, file_type, file_size, uploaded_at
-            FROM files WHERE id = %s
-        ''', (file_db_id,))
-        result = cursor.fetchone()
-        conn.close()
+        """Get all folders for a user with file counts"""
+        folders = list(self.folders.find({'user_id': user_id}).sort('created_at', -1))
+        
+        result = []
+        for folder in folders:
+            file_count = self.files.count_documents({'folder_id': str(folder['_id'])})
+            result.append((
+                str(folder['_id']),  # id
+                folder['folder_name'],  # name
+                folder['created_at'].isoformat(),  # created_at
+                file_count  # file_count
+            ))
+        
         return result
     
+    def add_file(self, folder_id, file_id, file_name, file_type, file_size):
+        """Add a file to a folder"""
+        self.files.insert_one({
+            'folder_id': folder_id,
+            'file_id': file_id,
+            'file_name': file_name,
+            'file_type': file_type,
+            'file_size': file_size,
+            'uploaded_at': datetime.now()
+        })
+    
+    def get_folder_files(self, folder_id):
+        """Get all files in a folder"""
+        files = list(self.files.find({'folder_id': folder_id}).sort('uploaded_at', -1))
+        
+        result = []
+        for file in files:
+            result.append((
+                str(file['_id']),  # id
+                file['file_id'],  # telegram file_id
+                file['file_name'],  # name
+                file['file_type'],  # type
+                file['file_size'],  # size
+                file['uploaded_at'].isoformat()  # uploaded_at
+            ))
+        
+        return result
+    
+    def delete_file(self, file_db_id):
+        """Delete a file"""
+        from bson import ObjectId
+        self.files.delete_one({'_id': ObjectId(file_db_id)})
+    
+    def delete_folder(self, folder_id):
+        """Delete a folder and all its files"""
+        from bson import ObjectId
+        self.files.delete_many({'folder_id': folder_id})
+        self.folders.delete_one({'_id': ObjectId(folder_id)})
+    
+    def get_file_info(self, file_db_id):
+        """Get file info by ID"""
+        from bson import ObjectId
+        file = self.files.find_one({'_id': ObjectId(file_db_id)})
+        
+        if not file:
+            return None
+        
+        return (
+            str(file['_id']),
+            file['file_id'],
+            file['file_name'],
+            file['file_type'],
+            file['file_size'],
+            file['uploaded_at'].isoformat()
+        )
+    
     def get_user_stats(self, user_id):
-        conn = self.get_connection()
-        cursor = conn.cursor()
+        """Get user statistics"""
+        total_folders = self.folders.count_documents({'user_id': user_id})
         
-        cursor.execute('SELECT COUNT(*) FROM folders WHERE user_id = %s', (user_id,))
-        total_folders = cursor.fetchone()[0]
+        # Get all folder IDs for this user
+        folder_ids = [str(f['_id']) for f in self.folders.find({'user_id': user_id})]
         
-        cursor.execute('''
-            SELECT COUNT(*), COALESCE(SUM(fi.file_size), 0)
-            FROM folders f
-            LEFT JOIN files fi ON f.id = fi.folder_id
-            WHERE f.user_id = %s
-        ''', (user_id,))
-        total_files, total_size = cursor.fetchone()
+        # Count files and total size
+        total_files = self.files.count_documents({'folder_id': {'$in': folder_ids}})
         
-        cursor.execute('''
-            SELECT f.folder_name, COUNT(fi.id) as file_count
-            FROM folders f
-            LEFT JOIN files fi ON f.id = fi.folder_id
-            WHERE f.user_id = %s
-            GROUP BY f.id, f.folder_name
-            ORDER BY file_count DESC
-            LIMIT 3
-        ''', (user_id,))
-        top_folders = cursor.fetchall()
+        pipeline = [
+            {'$match': {'folder_id': {'$in': folder_ids}}},
+            {'$group': {'_id': None, 'total_size': {'$sum': '$file_size'}}}
+        ]
+        result = list(self.files.aggregate(pipeline))
+        total_size = result[0]['total_size'] if result else 0
         
-        conn.close()
+        # Get top 3 folders
+        top_folders = []
+        for folder_id in folder_ids[:3]:
+            folder = self.folders.find_one({'_id': ObjectId(folder_id)})
+            if folder:
+                count = self.files.count_documents({'folder_id': folder_id})
+                top_folders.append((folder['folder_name'], count))
         
-        if top_folders:
-            top_folders_text = "\n".join([f"📁 {name}: {count} files" for name, count in top_folders])
-        else:
-            top_folders_text = "No folders yet"
+        top_folders_text = "\n".join([f"📁 {name}: {count} files" for name, count in top_folders]) if top_folders else "No folders yet"
         
         return {
             'total_folders': total_folders,
