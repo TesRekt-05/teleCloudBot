@@ -1,29 +1,25 @@
 # bot.py
-import logging
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
-    ConversationHandler
-)
-from config import BOT_TOKEN, DATABASE_NAME
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 from database import Database
 import os
+import logging
+import asyncio
 
+# MongoDB Configuration
 MONGODB_URI = "mongodb+srv://SAHIL5644:SAHIL5644@telegramcloud.pxssfrj.mongodb.net/?retryWrites=true&w=majority&appName=TelegramCloud"
-db = Database(MONGODB_URI)
+BOT_TOKEN = "8338124872:AAEDBGm4LsDhG4T6U40JYtLspUiUyvyOiWc"
 
+# Initialize MongoDB database
+db = Database(MONGODB_URI)
 
 # Enable logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
+# ... rest of your code stays the same
 
 
 # Conversation states
@@ -392,7 +388,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Handle "save single file to folder" callback
     if data.startswith("save_to_"):
-        folder_id = int(data.split("_")[-1])
+        folder_id = data.split("_")[-1]  # Keep as STRING, not int!
 
         if user_id not in user_data:
             await query.edit_message_text("❌ File data expired. Please send the file again.")
@@ -402,7 +398,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Save file to database
         db.add_file(
-            folder_id,
+            folder_id,  # Pass as string
             file_info['file_id'],
             file_info['file_name'],
             file_info['file_type'],
@@ -423,7 +419,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("save_batch_"):
         parts = data.split("_")
         media_group_id = parts[2]
-        folder_id = int(parts[3])
+        folder_id = parts[3]  # Keep as STRING!
 
         batch_key = f"batch_{media_group_id}"
 
@@ -436,7 +432,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Save all files to database
         for file_info in files:
             db.add_file(
-                folder_id,
+                folder_id,  # Pass as string
                 file_info['file_id'],
                 file_info['file_name'],
                 file_info['file_type'],
@@ -455,7 +451,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Handle "view folder" callback
     elif data.startswith("view_folder_"):
-        folder_id = int(data.split("_")[-1])
+        folder_id = data.split("_")[-1]  # Keep as STRING!
         files = db.get_folder_files(folder_id)
 
         if not files:
@@ -549,13 +545,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Handle "delete file" callback
     elif data.startswith("delete_file_"):
-        file_db_id = int(data.split("_")[-1])
+        file_db_id = data.split("_")[-1]  # Keep as STRING!
 
         # Get file info before deleting
         file_info = db.get_file_info(file_db_id)
 
         if file_info:
-            file_name = file_info[0]
+            file_name = file_info[2]  # Index 2 is file_name
 
             # Delete from database
             db.delete_file(file_db_id)
@@ -574,7 +570,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Handle "confirm delete folder" callback
     elif data.startswith("confirm_delete_folder_"):
-        folder_id = int(data.split("_")[-1])
+        folder_id = data.split("_")[-1]  # Keep as STRING!
 
         # Create confirmation keyboard
         keyboard = [
@@ -602,7 +598,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Handle "delete folder" callback
     elif data.startswith("delete_folder_"):
-        folder_id = int(data.split("_")[-1])
+        folder_id = data.split("_")[-1]  # Keep as STRING!
 
         # Delete folder and all its files
         db.delete_folder(folder_id)

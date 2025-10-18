@@ -12,7 +12,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 app = Flask(__name__, static_folder='frontend/dist')
 CORS(app)
 
-# Initialize database (will use DATABASE_URL from environment)
+# Initialize database (will use MONGODB_URI from environment)
 db = Database()
 
 # Health check endpoint
@@ -20,45 +20,43 @@ db = Database()
 def health():
     return jsonify({'status': 'ok', 'message': 'API is running'})
 
-# Get user folders
-@app.route('/api/folders/<int:user_id>', methods=['GET'])
+# Get user folders - CHANGED: removed <int:>
+@app.route('/api/folders/<user_id>', methods=['GET'])
 def get_folders(user_id):
-    folders = db.get_user_folders(user_id)
+    folders = db.get_user_folders(int(user_id))  # Convert to int for user_id
     folders_list = [{
         'id': folder[0],
         'name': folder[1],
-        'created_at': str(folder[2]),  # Convert timestamp to string
+        'created_at': str(folder[2]),
         'file_count': folder[3]
     } for folder in folders]
     return jsonify({'success': True, 'folders': folders_list})
 
-# Get files in a folder
-@app.route('/api/folders/<int:folder_id>/files', methods=['GET'])
+# Get files in a folder - CHANGED: removed <int:>
+@app.route('/api/folders/<folder_id>/files', methods=['GET'])
 def get_files(folder_id):
-    files = db.get_folder_files(folder_id)
+    files = db.get_folder_files(folder_id)  # Pass as string
     files_list = [{
         'id': file[0],
         'telegram_file_id': file[1],
         'name': file[2],
         'type': file[3],
         'size': file[4],
-        'uploaded_at': str(file[5])  # Convert timestamp to string
+        'uploaded_at': str(file[5])
     } for file in files]
     return jsonify({'success': True, 'files': files_list})
 
-# Get Telegram file URL
-@app.route('/api/file/<int:file_id>/url', methods=['GET'])
+# Get Telegram file URL - CHANGED: removed <int:>
+@app.route('/api/file/<file_id>/url', methods=['GET'])
 def get_file_url(file_id):
     """Get direct URL to download file from Telegram"""
     try:
-        # Get file info from database
-        file_info = db.get_file_info(file_id)
+        file_info = db.get_file_info(file_id)  # Pass as string
         if not file_info:
             return jsonify({'success': False, 'message': 'File not found'}), 404
         
         telegram_file_id = file_info[1]
         
-        # Get file from Telegram
         file_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={telegram_file_id}"
         response = requests.get(file_url)
         data = response.json()
@@ -77,25 +75,25 @@ def get_file_url(file_id):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# Delete file
-@app.route('/api/files/<int:file_id>', methods=['DELETE'])
+# Delete file - CHANGED: removed <int:>
+@app.route('/api/files/<file_id>', methods=['DELETE'])
 def delete_file(file_id):
-    db.delete_file(file_id)
+    db.delete_file(file_id)  # Pass as string
     return jsonify({'success': True, 'message': 'File deleted'})
 
-# Delete folder
-@app.route('/api/folders/<int:folder_id>', methods=['DELETE'])
+# Delete folder - CHANGED: removed <int:>
+@app.route('/api/folders/<folder_id>', methods=['DELETE'])
 def delete_folder(folder_id):
-    db.delete_folder(folder_id)
+    db.delete_folder(folder_id)  # Pass as string
     return jsonify({'success': True, 'message': 'Folder deleted'})
 
-# Get user stats
-@app.route('/api/stats/<int:user_id>', methods=['GET'])
+# Get user stats - CHANGED: removed <int:>
+@app.route('/api/stats/<user_id>', methods=['GET'])
 def get_stats(user_id):
-    stats = db.get_user_stats(user_id)
+    stats = db.get_user_stats(int(user_id))  # Convert to int for user_id
     return jsonify({'success': True, 'stats': stats})
 
-# Serve React app (optional - can remove if frontend is on Vercel)
+# Serve React app
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
@@ -117,6 +115,6 @@ if __name__ == '__main__':
     print("   - DELETE /api/folders/<folder_id>")
     print("   - GET  /api/stats/<user_id>")
     print(f"\n🌐 Server running on port {port}")
-    print(f"🗄️ Using PostgreSQL database")
+    print(f"🗄️ Using MongoDB database")
     
     app.run(host='0.0.0.0', port=port, debug=False)
